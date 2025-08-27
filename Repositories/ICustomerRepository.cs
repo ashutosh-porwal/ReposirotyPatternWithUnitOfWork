@@ -9,7 +9,7 @@ namespace ReposirotyPatternWithUnitOfWork.Repositories
         Task AddAsync(Customer customer);
         void Update(Customer customer);
         void Delete(Customer customer);
-        Task<bool> ExistsAsync(int id);
+        Task<bool> ExistAsync(int id);
         Task SaveAsync();
     }
 }

@@ -3,6 +3,7 @@ using ReposirotyPatternWithUnitOfWork.DTOs;
 using ReposirotyPatternWithUnitOfWork.Models;
 using ReposirotyPatternWithUnitOfWork.Repositories;
 using ReposirotyPatternWithUnitOfWork.Repositories.GenericRepository;
+using ReposirotyPatternWithUnitOfWork.UnitOfWork;
 
 namespace ReposirotyPatternWithUnitOfWork.Controllers
 {
@@ -10,22 +11,15 @@ namespace ReposirotyPatternWithUnitOfWork.Controllers
     [Route("api/[controller]")]
     public class OrdersController : ControllerBase
     {
-        private readonly IOrderRepository _orderRepository;
-        private readonly IGenericRepository<Customer> _customerRepository;
-        private readonly IGenericRepository<Product> _productRepository;
-        public OrdersController(
-            IOrderRepository orderRepository,
-            IGenericRepository<Customer> customerRepository,
-            IGenericRepository<Product> productRepository)
+        private readonly IUnitOfWork _unitOfWork;
+        public OrdersController(IUnitOfWork unitOfWork)
         {
-            _orderRepository = orderRepository;
-            _customerRepository = customerRepository;
-            _productRepository = productRepository;
+            _unitOfWork = unitOfWork;
         }
         [HttpGet]
         public async Task<IActionResult> GetOrders()
         {
-            var orders = await _orderRepository.GetAllAsync();
+            var orders = await _unitOfWork.Orders.GetAllAsync();
             var dtos = orders.Select(o => new OrderDTO
             {
                 OrderId = o.OrderId,
@@ -47,7 +41,7 @@ namespace ReposirotyPatternWithUnitOfWork.Controllers
         [HttpGet("{id}")]
         public async Task<IActionResult> GetOrder(int id)
         {
-            var o = await _orderRepository.GetByIdAsync(id);
+            var o = await _unitOfWork.Orders.GetByIdAsync(id);
             if (o == null)
                 return NotFound();
             var dto = new OrderDTO
@@ -73,32 +67,42 @@ namespace ReposirotyPatternWithUnitOfWork.Controllers
         {
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
-            bool customerExists = await _customerRepository.ExistAsync(dto.CustomerId);
-            if (!customerExists)
-                return BadRequest("Invalid CustomerId");
-            foreach (var item in dto.OrderItems)
+
+            await _unitOfWork.BeginTransactionAsync();
+            try
             {
-                bool productExists = await _productRepository.ExistAsync(item.ProductId);
-                if (!productExists)
-                    return BadRequest($"Invalid ProductId: {item.ProductId}");
-            }
-            var order = new Order
-            {
-                CustomerId = dto.CustomerId,
-                OrderDate = DateTime.UtcNow,
-                OrderAmount = dto.OrderItems.Sum(i => i.Quantity * i.UnitPrice),
-                OrderItems = dto.OrderItems.Select(i => new OrderItem
+                bool customerExists = await _unitOfWork.Customers.ExistAsync(dto.CustomerId);
+                if (!customerExists)
+                    return BadRequest("Invalid CustomerId");
+                foreach (var item in dto.OrderItems)
                 {
-                    ProductId = i.ProductId,
-                    Quantity = i.Quantity,
-                    UnitPrice = i.UnitPrice
-                }).ToList()
-            };
-            await _orderRepository.AddAsync(order);
-            await _orderRepository.SaveAsync();
-            dto.OrderId = order.OrderId;
-            dto.OrderDate = order.OrderDate;
-            return Ok(dto);
+                    bool productExists = await _unitOfWork.Products.ExistAsync(item.ProductId);
+                    if (!productExists)
+                        return BadRequest($"Invalid ProductId: {item.ProductId}");
+                }
+                var order = new Order
+                {
+                    CustomerId = dto.CustomerId,
+                    OrderDate = DateTime.UtcNow,
+                    OrderAmount = dto.OrderItems.Sum(i => i.Quantity * i.UnitPrice),
+                    OrderItems = dto.OrderItems.Select(i => new OrderItem
+                    {
+                        ProductId = i.ProductId,
+                        Quantity = i.Quantity,
+                        UnitPrice = i.UnitPrice
+                    }).ToList()
+                };
+                await _unitOfWork.Orders.AddAsync(order);
+                await _unitOfWork.CommitAsync();
+                dto.OrderId = order.OrderId;
+                dto.OrderDate = order.OrderDate;
+                return Ok(dto);
+            }
+            catch (Exception ex)
+            {
+                await _unitOfWork.RollbackAsync();
+                return StatusCode(500, "An error occurred while creating the order.");
+            }
         }
         [HttpPut("{id}")]
         public async Task<IActionResult> UpdateOrder(int id, [FromBody] OrderDTO dto)
@@ -107,49 +111,72 @@ namespace ReposirotyPatternWithUnitOfWork.Controllers
                 return BadRequest("Id mismatch");
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
-            var existing = await _orderRepository.GetByIdAsync(id);
+
+            var existing = await _unitOfWork.Orders.GetByIdAsync(id);
             if (existing == null)
                 return NotFound();
-            bool customerExists = await _customerRepository.ExistAsync(dto.CustomerId);
+            bool customerExists = await _unitOfWork.Customers.ExistAsync(dto.CustomerId);
             if (!customerExists)
                 return BadRequest("Invalid CustomerId");
             foreach (var item in dto.OrderItems)
             {
-                bool productExists = await _productRepository.ExistAsync(item.ProductId);
+                bool productExists = await _unitOfWork.Products.ExistAsync(item.ProductId);
                 if (!productExists)
                     return BadRequest($"Invalid ProductId: {item.ProductId}");
             }
-            existing.CustomerId = dto.CustomerId;
-            existing.OrderDate = dto.OrderDate;
-            existing.OrderAmount = dto.OrderItems.Sum(i => i.Quantity * i.UnitPrice);
-            // Update OrderItems: Clear existing and add new (simplified)
-            existing.OrderItems.Clear();
-            existing.OrderItems = dto.OrderItems.Select(i => new OrderItem
+
+            await _unitOfWork.BeginTransactionAsync();
+            try
             {
-                ProductId = i.ProductId,
-                Quantity = i.Quantity,
-                UnitPrice = i.UnitPrice
-            }).ToList();
-            _orderRepository.Update(existing);
-            await _orderRepository.SaveAsync();
-            return NoContent();
+                
+                existing.CustomerId = dto.CustomerId;
+                existing.OrderDate = dto.OrderDate;
+                existing.OrderAmount = dto.OrderItems.Sum(i => i.Quantity * i.UnitPrice);
+                // Update OrderItems: Clear existing and add new (simplified)
+                existing.OrderItems.Clear();
+                existing.OrderItems = dto.OrderItems.Select(i => new OrderItem
+                {
+                    ProductId = i.ProductId,
+                    Quantity = i.Quantity,
+                    UnitPrice = i.UnitPrice
+                }).ToList();
+                _unitOfWork.Orders.Update(existing);
+                await _unitOfWork.CommitAsync();
+                return NoContent();
+            }
+            catch (Exception ex)
+            {
+                await _unitOfWork.RollbackAsync();
+                return StatusCode(500, "An error occurred while updating the order.");
+            }
         }
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteOrder(int id)
         {
-            var existing = await _orderRepository.GetByIdAsync(id);
+            var existing = await _unitOfWork.Orders.GetByIdAsync(id);
             if (existing == null)
                 return NotFound();
-            _orderRepository.Delete(existing);
-            await _orderRepository.SaveAsync();
-            return NoContent();
+
+            await _unitOfWork.BeginTransactionAsync();
+
+            try
+            {
+                _unitOfWork.Orders.Delete(existing);
+                await _unitOfWork.CommitAsync();
+                return NoContent();
+            }
+            catch (Exception ex)
+            {
+                await _unitOfWork.RollbackAsync();
+                return StatusCode(500, "An error occurred while deleting the order.");
+            }
         }
 
         // GET: api/orders/bycustomer/{customerId}
         [HttpGet("bycustomer/{customerId}")]
         public async Task<IActionResult> GetOrdersByCustomer(int customerId)
         {
-            var orders = await _orderRepository.GetOrdersByCustomerAsync(customerId);
+            var orders = await _unitOfWork.Orders.GetOrdersByCustomerAsync(customerId);
             var dtos = orders.Select(o => new OrderDTO
             {
                 OrderId = o.OrderId,
@@ -172,7 +199,7 @@ namespace ReposirotyPatternWithUnitOfWork.Controllers
         [HttpGet("bydaterange")]
         public async Task<IActionResult> GetOrdersByDateRange([FromQuery] DateTime startDate, [FromQuery] DateTime endDate)
         {
-            var orders = await _orderRepository.GetOrdersByDateRangeAsync(startDate, endDate);
+            var orders = await _unitOfWork.Orders.GetOrdersByDateRangeAsync(startDate, endDate);
             var dtos = orders.Select(o => new OrderDTO
             {
                 OrderId = o.OrderId,

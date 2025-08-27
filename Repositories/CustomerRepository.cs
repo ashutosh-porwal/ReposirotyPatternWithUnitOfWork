@@ -31,7 +31,7 @@ namespace ReposirotyPatternWithUnitOfWork.Repositories
         {
             _context.Customers.Remove(customer);
         }
-        public async Task<bool> ExistsAsync(int id)
+        public async Task<bool> ExistAsync(int id)
         {
             return await _context.Customers.AnyAsync(c => c.CustomerId == id);
         }

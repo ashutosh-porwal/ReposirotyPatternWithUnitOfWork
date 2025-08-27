@@ -10,9 +10,11 @@ namespace ReposirotyPatternWithUnitOfWork.Controllers
     [Route("api/[controller]")]
     public class ProductsController : ControllerBase
     {
-        private readonly IGenericRepository<Product> _productRepository;
+        //private readonly IGenericRepository<Product> _productRepository;
         private readonly IGenericRepository<Category> _categoryRepository;
-        public ProductsController(IGenericRepository<Product> productRepository, IGenericRepository<Category> categoryRepository)
+        private readonly IProductRepository _productRepository;
+        public ProductsController(IProductRepository productRepository, IGenericRepository<Category> categoryRepository,
+            IProductRepository customProductRepository)
         {
             _productRepository = productRepository;
             _categoryRepository = categoryRepository;
@@ -123,6 +125,39 @@ namespace ReposirotyPatternWithUnitOfWork.Controllers
             await _productRepository.SaveAsync();
             
             return NoContent();
+        }
+
+        // GET: api/products/bycategory/{categoryId}
+        [HttpGet("bycategory/{categoryId}")]
+        public async Task<IActionResult> GetProductsByCategory(int categoryId)
+        {
+            var products = await _productRepository.GetProductsByCategoryAsync(categoryId);
+            var dtos = products.Select(p => new ProductDTO
+            {
+                ProductId = p.ProductId,
+                Name = p.Name,
+                Description = p.Description,
+                Price = p.Price,
+                CategoryId = p.CategoryId,
+                CategoryName = p.Category?.Name
+            });
+            return Ok(dtos);
+        }
+
+        [HttpGet("top/{count}")]
+        public async Task<IActionResult> GetTopSellingProducts(int count)
+        {
+            var products = await _productRepository.GetTopSellingProductsAsync(count);
+            var dtos = products.Select(p => new ProductDTO
+            {
+                ProductId = p.ProductId,
+                Name = p.Name,
+                Description = p.Description,
+                Price = p.Price,
+                CategoryId = p.CategoryId,
+                CategoryName = p.Category?.Name
+            });
+            return Ok(dtos);
         }
     }
 }

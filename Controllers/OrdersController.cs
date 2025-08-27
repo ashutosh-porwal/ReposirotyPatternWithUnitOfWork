@@ -10,11 +10,11 @@ namespace ReposirotyPatternWithUnitOfWork.Controllers
     [Route("api/[controller]")]
     public class OrdersController : ControllerBase
     {
-        private readonly IGenericRepository<Order> _orderRepository;
+        private readonly IOrderRepository _orderRepository;
         private readonly IGenericRepository<Customer> _customerRepository;
         private readonly IGenericRepository<Product> _productRepository;
         public OrdersController(
-            IGenericRepository<Order> orderRepository,
+            IOrderRepository orderRepository,
             IGenericRepository<Customer> customerRepository,
             IGenericRepository<Product> productRepository)
         {
@@ -143,6 +143,53 @@ namespace ReposirotyPatternWithUnitOfWork.Controllers
             _orderRepository.Delete(existing);
             await _orderRepository.SaveAsync();
             return NoContent();
+        }
+
+        // GET: api/orders/bycustomer/{customerId}
+        [HttpGet("bycustomer/{customerId}")]
+        public async Task<IActionResult> GetOrdersByCustomer(int customerId)
+        {
+            var orders = await _orderRepository.GetOrdersByCustomerAsync(customerId);
+            var dtos = orders.Select(o => new OrderDTO
+            {
+                OrderId = o.OrderId,
+                OrderDate = o.OrderDate,
+                CustomerId = o.CustomerId,
+                CustomerName = o.Customer?.FullName,
+                OrderAmount = o.OrderAmount,
+                OrderItems = o.OrderItems.Select(oi => new OrderItemDTO
+                {
+                    OrderItemId = oi.OrderItemId,
+                    ProductId = oi.ProductId,
+                    ProductName = oi.Product?.Name,
+                    Quantity = oi.Quantity,
+                    UnitPrice = oi.UnitPrice
+                }).ToList()
+            });
+            return Ok(dtos);
+        }
+        // GET: api/orders/bydaterange?startDate=yyyy-MM-dd&endDate=yyyy-MM-dd
+        [HttpGet("bydaterange")]
+        public async Task<IActionResult> GetOrdersByDateRange([FromQuery] DateTime startDate, [FromQuery] DateTime endDate)
+        {
+            var orders = await _orderRepository.GetOrdersByDateRangeAsync(startDate, endDate);
+            var dtos = orders.Select(o => new OrderDTO
+            {
+                OrderId = o.OrderId,
+                OrderDate = o.OrderDate,
+                CustomerId = o.CustomerId,
+                CustomerName = o.Customer?.FullName,
+                OrderAmount = o.OrderAmount,
+                OrderItems = o.OrderItems.Select(oi => new OrderItemDTO
+                {
+                    OrderItemId = oi.OrderItemId,
+                    ProductId = oi.ProductId,
+                    ProductName = oi.Product?.Name,
+                    Quantity = oi.Quantity,
+                    UnitPrice = oi.UnitPrice
+                }).ToList()
+            });
+            return Ok(dtos);
         }
     }
 }

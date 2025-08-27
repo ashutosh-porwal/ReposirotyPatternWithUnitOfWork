@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using ReposirotyPatternWithUnitOfWork.Data;
 using ReposirotyPatternWithUnitOfWork.Repositories;
 using ReposirotyPatternWithUnitOfWork.Repositories.GenericRepository;
+using ReposirotyPatternWithUnitOfWork.UnitOfWork;
 
 namespace ReposirotyPatternWithUnitOfWork
 {
@@ -27,6 +28,7 @@ namespace ReposirotyPatternWithUnitOfWork
             builder.Services.AddScoped<ICustomerRepository, CustomerRepository>();
             builder.Services.AddScoped<IOrderRepository, OrderRepository>();
             builder.Services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepository<>));
+            builder.Services.AddScoped<IUnitOfWork, UnitOfWork.UnitOfWork>();
 
             var app = builder.Build();
 

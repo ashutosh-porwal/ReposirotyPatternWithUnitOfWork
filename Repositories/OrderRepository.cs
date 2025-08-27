@@ -1,52 +1,47 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using ReposirotyPatternWithUnitOfWork.Data;
 using ReposirotyPatternWithUnitOfWork.Models;
+using ReposirotyPatternWithUnitOfWork.Repositories.GenericRepository;
 
 namespace ReposirotyPatternWithUnitOfWork.Repositories
 {
-    public class OrderRepository : IOrderRepository
+    public class OrderRepository : GenericRepository<Order>, IOrderRepository
     {
         private readonly ECommerceDbContext _context;
-        public OrderRepository(ECommerceDbContext context)
+        public OrderRepository(ECommerceDbContext context) : base(context)
         {
             _context = context;
         }
-        public async Task<IEnumerable<Order>> GetAllAsync()
+
+        public async Task<IEnumerable<Order>> GetAllOrdersWithDetailsAsync()
         {
             return await _context.Orders
                 .Include(o => o.Customer)
                 .Include(o => o.OrderItems)
-                    .ThenInclude(oi => oi.Product)
-                .AsNoTracking().ToListAsync();
-        }
-        public async Task<Order?> GetByIdAsync(int orderId)
-        {
-            return await _context.Orders
-                .Include(o => o.Customer)
-                .Include(o => o.OrderItems)
-                    .ThenInclude(oi => oi.Product)
+                .ThenInclude(oi => oi.Product)
                 .AsNoTracking()
-                .FirstOrDefaultAsync(o => o.OrderId == orderId);
+                .ToListAsync();
         }
-        public async Task AddAsync(Order order)
+
+        public async Task<IEnumerable<Order>> GetOrdersByCustomerAsync(int customerId)
         {
-            await _context.Orders.AddAsync(order);
+            return await _context.Orders
+                .Where(o => o.CustomerId == customerId)
+                .Include(o => o.OrderItems)
+                .ThenInclude(oi => oi.Product)
+                .AsNoTracking()
+                .ToListAsync();
         }
-        public void Update(Order order)
+
+        public async Task<IEnumerable<Order>> GetOrdersByDateRangeAsync(DateTime startDate, DateTime endDate)
         {
-            _context.Orders.Update(order);
-        }
-        public void Delete(Order order)
-        {
-            _context.Orders.Remove(order);
-        }
-        public async Task<bool> ExistsAsync(int id)
-        {
-            return await _context.Orders.AnyAsync(c => c.OrderId == id);
-        }
-        public async Task SaveAsync()
-        {
-            await _context.SaveChangesAsync();
+            return await _context.Orders
+                .Where( o => o.OrderDate >=  startDate && o.OrderDate <= endDate)
+                .Include(c => c.Customer)
+                .Include(o => o.OrderItems)
+                .ThenInclude(oi => oi.Product)
+                .AsNoTracking()
+                .ToListAsync();
         }
     }
 }

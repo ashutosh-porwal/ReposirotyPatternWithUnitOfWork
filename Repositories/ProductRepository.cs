@@ -1,44 +1,37 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using ReposirotyPatternWithUnitOfWork.Data;
 using ReposirotyPatternWithUnitOfWork.Models;
+using ReposirotyPatternWithUnitOfWork.Repositories.GenericRepository;
 
 namespace ReposirotyPatternWithUnitOfWork.Repositories
 {
-    public class ProductRepository : IProductRepository
+    public class ProductRepository : GenericRepository<Product>, IProductRepository
     {
         private readonly ECommerceDbContext _context;
-        public ProductRepository(ECommerceDbContext context)
+
+        // Fix CS7036: Pass context to base constructor
+        public ProductRepository(ECommerceDbContext context) : base(context)
         {
             _context = context;
         }
-        public async Task<IEnumerable<Product>> GetAllAsync()
+
+        public async Task<IEnumerable<Product>> GetProductsByCategoryAsync(int categoryId)
         {
-            return await _context.Products.Include(p => p.Category).AsNoTracking().ToListAsync();
+            return await _context.Products
+                .Where(p => p.CategoryId == categoryId)
+                .Include(p => p.Category)
+                .AsNoTracking()
+                .ToListAsync();
         }
-        public async Task<Product?> GetByIdAsync(int productId)
+
+        public async Task<IEnumerable<Product>> GetTopSellingProductsAsync(int count)
         {
-            return await _context.Products.Include(p => p.Category)
-                .AsNoTracking().FirstOrDefaultAsync(p => p.ProductId == productId);
-        }
-        public async Task AddAsync(Product product)
-        {
-            await _context.Products.AddAsync(product);
-        }
-        public void Update(Product product)
-        {
-            _context.Products.Update(product);
-        }
-        public void Delete(Product product)
-        {
-            _context.Products.Remove(product);
-        }
-        public async Task<bool> ExistsAsync(int id)
-        {
-            return await _context.Products.AnyAsync(c => c.ProductId == id);
-        }
-        public async Task SaveAsync()
-        {
-            await _context.SaveChangesAsync();
+            return await _context.Products
+                .OrderByDescending(p => p.OrderItems.Sum(s=>s.Quantity))
+                .Include(p=>p.Category)
+                .Take(count)
+                .AsNoTracking()
+                .ToListAsync();
         }
     }
 }
